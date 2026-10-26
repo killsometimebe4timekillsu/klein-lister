@@ -1,0 +1,62 @@
+name: Sync listings
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "listings/**"
+      - "config.yaml"
+  schedule:
+    # Daily: extend listings that expire within 8 days.
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "sync = full sync by content hash, extend = extend expiring listings"
+        type: choice
+        options: [sync, extend]
+        default: sync
+
+# Never run two browser sessions against the same account at once.
+concurrency:
+  group: kleinanzeigen
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    # Self-hosted runner on a machine with a residential IP and Chromium installed.
+    # Kleinanzeigen tends to challenge logins from GitHub-hosted (datacenter) IPs.
+    runs-on: [self-hosted, kleinanzeigen]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install kleinanzeigen-bot
+        run: bash scripts/install-bot.sh
+
+      - name: Sync
+        env:
+          KLEINANZEIGEN_BOT_USERNAME: ${{ secrets.KLEINANZEIGEN_USERNAME }}
+          KLEINANZEIGEN_BOT_PASSWORD: ${{ secrets.KLEINANZEIGEN_PASSWORD }}
+        run: |
+          mode="${{ github.event_name == 'schedule' && 'extend' || inputs.mode || 'sync' }}"
+          before="${{ github.event_name == 'push' && github.event.before || '' }}"
+          python3 scripts/sync.py --mode "$mode" --before "$before"
+
+      - name: Commit listing ids back
+        if: always()
+        run: |
+          git add listings
+          if git diff --cached --quiet; then
+            echo "No state changes."
+            exit 0
+          fi
+          git -c user.name="klein-lister[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "chore: update listing state [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

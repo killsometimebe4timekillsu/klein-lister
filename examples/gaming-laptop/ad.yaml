@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Second-Hand-Friends/kleinanzeigen-bot/main/schemas/ad.schema.json
+# Copy this folder to listings/<your-item>/ and edit it.
+# Set `active: false` once the item is sold: the next sync deletes the listing.
+active: true
+title: "Gaming Laptop - RTX 3060"
+description: |
+  Powerful gaming laptop in excellent condition.
+  Includes original box and charger.
+category: "Elektronik > Notebooks"
+price: 450
+price_type: NEGOTIABLE
+shipping_type: PICKUP
+images:
+  - "*.jpg"

@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Second-Hand-Friends/kleinanzeigen-bot/main/schemas/config.schema.json
+# Main kleinanzeigen-bot configuration. scripts/sync.py renders this into
+# .runtime/config.yaml on the runner and fills in the browser profile path.
+ad_files:
+  - ./listings/**/ad.yaml
+
+ad_defaults:
+  active: true
+  type: OFFER
+  price_type: NEGOTIABLE
+  shipping_type: PICKUP
+  contact:
+    name: "Your Name"     # TODO: shown on every listing, override per ad if needed
+    zipcode: "12345"      # TODO: your postal code
+
+publishing:
+  # Without BASIS the bot stops at the package-selection step and waits for a human.
+  package_selection: BASIS
+  delete_old_ads: AFTER_PUBLISH
+
+deleting:
+  # After a listing is deleted, drop its id so it is never deleted twice.
+  after_delete: RESET
+
+browser:
+  arguments:
+    - --headless=new
+    - --disable-dev-shm-usage
+  # Keep cookies between runs so the login (and any CAPTCHA/SMS check) is reused.
+  use_private_window: false
+  user_data_dir: "__PROFILE_DIR__"
+
+login:
+  username: "${KLEINANZEIGEN_BOT_USERNAME}"
+  password: "${KLEINANZEIGEN_BOT_PASSWORD}"
+
+captcha:
+  # Fail fast in CI instead of waiting for someone to solve a CAPTCHA.
+  auto_restart: true
+  restart_delay: 30m
