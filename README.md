@@ -115,6 +115,20 @@ What you can do:
 3. **Ask Kleinanzeigen.** Use their help article on restricted IPs and the support form,
    and ask whether there is an approved interface for managing listings automatically.
 
+## When a run fails
+
+The Actions log of the *Sync* step shows the bot's output. For more detail, add a
+repository variable `KLEIN_LISTER_VERBOSE` with the value `1` in the data repo
+(*Settings → Secrets and variables → Actions → Variables*). The bot then runs with
+`-v` and logs its debug output; remove the variable again afterwards. The same log is
+written to `.runtime/kleinanzeigen-bot-latest.log` in the data repo checkout on the runner.
+
+If the log says `Manual recovery required` for a listing, the bot clicked "submit" but
+couldn't confirm the result and deliberately doesn't retry, so it never edits twice.
+Look at the listing under *Meine Anzeigen* to see whether the change was applied. The bot
+did not write the new `content_hash` back in that case, so a manual `sync` run (which
+compares hashes) will submit that listing once more.
+
 ## One-time manual login (required)
 
 **Why it is needed.** The first login to Kleinanzeigen has to be done by a person. In
