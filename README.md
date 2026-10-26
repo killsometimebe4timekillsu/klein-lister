@@ -169,10 +169,15 @@ online in that case. Set `shipping_type: PICKUP`, or `SHIPPING` together with `s
 in that listing's `ad.yaml`.
 
 If the log says `Manual recovery required` for a listing, the bot clicked "submit" but
-couldn't confirm the result and deliberately doesn't retry, so it never edits twice.
-Look at the listing under *Meine Anzeigen* to see whether the change was applied. The bot
-did not write the new `content_hash` back in that case, so a manual `sync` run (which
-compares hashes) will submit that listing once more.
+couldn't confirm the result (typically a browser protocol error while Kleinanzeigen's
+confirmation page loads, although the page was the "edit successful" one), and it never
+retries by itself, because a repeated *publish* could create a duplicate listing. For an
+*update* the workflow repeats it for exactly those listings (twice at most,
+`KLEIN_LISTER_UPDATE_RETRIES`), since an update edits the same listing by id. The log then
+shows a warning `Repeating it: attempt 1/2`, and the retry writes the new `content_hash` back.
+A `publish` is never repeated: look at *Meine Anzeigen* to see whether the listing exists.
+Note that a `sync` started by hand compares content hashes and also updates every listing
+whose stored hash differs from what the bot computes now, not only the ones you changed.
 
 ## One-time manual login (required)
 
