@@ -10,6 +10,12 @@ Order of operations:
 The bot writes ids and hashes back into the ad.yaml files; the workflow
 commits those changes afterwards.
 
+If Kleinanzeigen answers a login with its "IP-Bereich vorübergehend gesperrt"
+page, the run stops at once and no further login is attempted for a cooldown
+period (6 hours, KLEIN_LISTER_BLOCK_COOLDOWN_HOURS), so a block is never
+prolonged by our own retries. A successful interactive login (scripts/login.sh)
+clears it; KLEIN_LISTER_IGNORE_LOGIN_BLOCK=1 skips the check.
+
 `--mode import` instead downloads the listings that are online but not yet in
 the repo into listings/<folder>/ad.yaml. Listings that are not currently active
 online (paused, reserved, expired) go to imported-inactive/ so a sync never
@@ -38,6 +44,10 @@ RUNTIME_DIR = ROOT / ".runtime"
 RUNTIME_CONFIG = RUNTIME_DIR / "config.yaml"
 INACTIVE_IMPORTS = ROOT / "imported-inactive"
 AD_FILE = "ad.yaml"
+STATE_DIR = Path(os.environ.get("KLEIN_LISTER_STATE_DIR") or Path.home() / ".klein-lister")
+BLOCK_MARKER = STATE_DIR / "login-blocked"
+BLOCK_COOLDOWN = float(os.environ.get("KLEIN_LISTER_BLOCK_COOLDOWN_HOURS", "6")) * 3600
+BLOCK_SIGNAL = "IP_RANGE_BLOCKED"  # label the bot logs when it sees the block page
 NULL_SHA = "0" * 40
 
 ID_RE = re.compile(r"^id:\s*['\"]?(\d+)", re.MULTILINE)
@@ -131,21 +141,64 @@ def normalize_imports(dry_run: bool) -> None:
             candidates[0].rename(folder / AD_FILE)
 
 
+class LoginBlocked(Exception):
+    """Kleinanzeigen refused the login with its IP-range block page."""
+
+
+def login_block_age() -> float | None:
+    """Seconds since the last recorded login block, or None if there is none."""
+    try:
+        return time.time() - BLOCK_MARKER.stat().st_mtime
+    except FileNotFoundError:
+        return None
+
+
 def run_bot(*args: str, dry_run: bool) -> bool:
     cmd = [os.environ.get("KLEINANZEIGEN_BOT", "kleinanzeigen-bot"), "--workspace-mode=portable",
            f"--config={RUNTIME_CONFIG}", *args]
     print("+", " ".join(cmd), flush=True)
     if dry_run:
         return True
-    return subprocess.run(cmd, cwd=RUNTIME_DIR).returncode == 0
+    blocked = False
+    with subprocess.Popen(cmd, cwd=RUNTIME_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          text=True, errors="replace", bufsize=1) as proc:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            blocked = blocked or BLOCK_SIGNAL in line
+    if blocked:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        BLOCK_MARKER.touch()
+        raise LoginBlocked
+    if proc.returncode == 0:
+        BLOCK_MARKER.unlink(missing_ok=True)
+    return proc.returncode == 0
 
 
 def main() -> int:
+    try:
+        return run()
+    except LoginBlocked:
+        print(f"::error::Kleinanzeigen blocked the login (IP-Bereich vorübergehend gesperrt). "
+              f"Not retrying for {BLOCK_COOLDOWN / 3600:g}h so the block can expire; see 'If the login is blocked' in the README.")
+        return 3
+
+
+def run() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--before", default="", help="commit to diff against (push event 'before')")
     parser.add_argument("--mode", choices=["sync", "extend", "import"], default="sync")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    age = login_block_age()
+    if (age is not None and age < BLOCK_COOLDOWN and not args.dry_run
+            and not os.environ.get("KLEIN_LISTER_IGNORE_LOGIN_BLOCK")):
+        wait = (BLOCK_COOLDOWN - age) / 3600
+        print(f"::warning::Skipping: Kleinanzeigen blocked the last login {age / 3600:.1f}h ago. "
+              f"Next attempt allowed in {wait:.1f}h, or after an interactive login (scripts/login.sh).")
+        # A skipped scheduled extend is harmless; a skipped sync leaves listings out of date.
+        return 0 if args.mode == "extend" else 1
 
     render_config()
 

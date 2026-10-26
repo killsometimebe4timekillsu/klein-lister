@@ -77,7 +77,8 @@ Don't edit the `id`, `content_hash`, `created_on` or `updated_on` fields; the bo
 
    Solve any CAPTCHA or SMS check in the browser that opens. The session is kept in
    `~/.klein-lister/browser-profile` and reused by the workflow.
-   Run it again whenever a sync fails at login.
+   Run it again whenever a sync fails at login. On a runner without a screen, use
+   `login-remote.sh` instead, see [Logging in on a runner without a screen](#logging-in-on-a-runner-without-a-screen).
 
 ## Importing existing listings
 
@@ -99,6 +100,51 @@ push), `extend` to extend expiring listings, or `import` (see above).
 
 Locally, from the data repo, `python3 /path/to/klein-lister/scripts/sync.py --dry-run --before <sha>`
 prints the bot commands a push since `<sha>` would run.
+
+## If the login is blocked
+
+Kleinanzeigen may answer a login with "IP-Bereich vorübergehend gesperrt" (the log
+shows `STILL_ON_PASSWORD_PAGE + IP_RANGE_BLOCKED`). That is a temporary block of the
+network range the request came from. Press reports and user forums say it also hits
+ordinary users, for example behind shared (CGNAT) addresses or VPNs, and usually
+lifts after some time. It doesn't mean your account is blocked.
+
+What the workflow does about it: the run stops at the first blocked login, and
+no further login is attempted for 6 hours (`KLEIN_LISTER_BLOCK_COOLDOWN_HOURS`), so
+our own retries can't prolong the block. Runs during the cooldown are skipped with a
+warning (a skipped daily `extend` stays green, a skipped `sync`/`import` is red so you
+notice). A successful interactive login clears the cooldown, as does deleting
+`~/.klein-lister/login-blocked` on the runner.
+
+What you can do:
+1. **Log in yourself on the runner** (next section). A login you complete by hand in the
+   bot's browser profile is stored there, and the bot then reuses the session instead of
+   logging in on every run. It also tells you whether the block is about the network
+   (a human login is blocked too) or only about the unattended login.
+2. **Check whether your IPv4 address is shared.** If the WAN IPv4 shown in your router
+   differs from what `curl -4 ifconfig.me` prints on the runner, or starts with `100.64.`,
+   your provider shares one address between many customers (CGNAT/DS-Lite).
+3. **Ask Kleinanzeigen.** Use their help article on restricted IPs and the support form,
+   and ask whether there is an approved interface for managing listings automatically.
+
+## Logging in on a runner without a screen
+
+`scripts/login-remote.sh` starts a virtual screen on the runner that you watch and
+control over VNC, and runs `login.sh` on it. You type your credentials and solve any
+CAPTCHA or SMS check yourself.
+
+```bash
+sudo apt install xvfb x11vnc
+export KLEINANZEIGEN_BOT_USERNAME='you@example.com'   # only used to check it is the same account
+export KLEINANZEIGEN_BOT_PASSWORD='unused'
+bash klein-lister/scripts/login-remote.sh <your-data-repo-folder>
+```
+
+It prints a one-time VNC password. VNC listens on `localhost` only, so connect through
+an SSH tunnel (`ssh -L 5900:localhost:5900 <runner>`, then a VNC viewer on
+`localhost:5900`), or set `KLEIN_LISTER_VNC_LISTEN` to a private address such as the
+runner's [Tailscale](https://tailscale.com) IP if you can't SSH into it directly.
+When you're logged in, press ENTER in the terminal.
 
 ## Versions
 
