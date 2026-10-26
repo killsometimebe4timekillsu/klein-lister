@@ -1,0 +1,38 @@
+# Copy to .github/workflows/sync.yml in your private data repo.
+name: Sync listings
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "listings/**"
+      - "config.yaml"
+  schedule:
+    # Daily: extend listings that expire within 8 days.
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "sync = full sync by content hash, extend = extend expiring listings, import = download existing listings into the repo"
+        type: choice
+        options: [sync, extend, import]
+        default: sync
+
+# Never run two browser sessions against the same account at once.
+concurrency:
+  group: kleinanzeigen
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    uses: killsometimebe4timekillsu/klein-lister/.github/workflows/sync.yml@v1
+    with:
+      mode: ${{ github.event_name == 'schedule' && 'extend' || inputs.mode || 'sync' }}
+      before: ${{ github.event_name == 'push' && github.event.before || '' }}
+      tool-ref: v1
+    secrets:
+      KLEINANZEIGEN_USERNAME: ${{ secrets.KLEINANZEIGEN_USERNAME }}
+      KLEINANZEIGEN_PASSWORD: ${{ secrets.KLEINANZEIGEN_PASSWORD }}

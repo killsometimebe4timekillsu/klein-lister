@@ -15,6 +15,9 @@ the repo into listings/<folder>/ad.yaml. Listings that are not currently active
 online (paused, reserved, expired) go to imported-inactive/ so a sync never
 treats them as sold.
 
+Run it from the data repo (the one with config.yaml and listings/), or point
+KLEIN_LISTER_DATA_DIR at it.
+
 Usage: sync.py [--before SHA] [--mode sync|extend|import] [--dry-run]
 """
 
@@ -28,7 +31,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get("KLEIN_LISTER_DATA_DIR") or Path.cwd()).resolve()
 LISTINGS = ROOT / "listings"
 RUNTIME_DIR = ROOT / ".runtime"
 RUNTIME_CONFIG = RUNTIME_DIR / "config.yaml"
