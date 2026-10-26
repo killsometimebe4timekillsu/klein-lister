@@ -64,21 +64,9 @@ Don't edit the `id`, `content_hash`, `created_on` or `updated_on` fields; the bo
    and add the label `kleinanzeigen`. Kleinanzeigen tends to challenge logins from
    GitHub's cloud IPs, while a home IP with a persistent browser profile usually
    stays logged in.
-4. **Log in once by hand** on that machine, as the same user the runner runs as,
-   with a screen attached (or over VNC):
-
-   ```bash
-   git clone https://github.com/killsometimebe4timekillsu/klein-lister
-   git clone <your-data-repo>
-   export KLEINANZEIGEN_BOT_USERNAME='you@example.com'
-   export KLEINANZEIGEN_BOT_PASSWORD='...'
-   bash klein-lister/scripts/login.sh <your-data-repo-folder>
-   ```
-
-   Solve any CAPTCHA or SMS check in the browser that opens. The session is kept in
-   `~/.klein-lister/browser-profile` and reused by the workflow.
-   Run it again whenever a sync fails at login. On a runner without a screen, use
-   `login-remote.sh` instead, see [Logging in on a runner without a screen](#logging-in-on-a-runner-without-a-screen).
+4. **Do the [one-time manual login](#one-time-manual-login-required).** This step is
+   required: until a person has logged in once in the runner's browser profile, the
+   workflow's first login will most likely fail.
 
 ## Importing existing listings
 
@@ -117,7 +105,7 @@ notice). A successful interactive login clears the cooldown, as does deleting
 `~/.klein-lister/login-blocked` on the runner.
 
 What you can do:
-1. **Log in yourself on the runner** (next section). A login you complete by hand in the
+1. **Log in yourself on the runner** (see [One-time manual login](#one-time-manual-login-required)). A login you complete by hand in the
    bot's browser profile is stored there, and the bot then reuses the session instead of
    logging in on every run. It also tells you whether the block is about the network
    (a human login is blocked too) or only about the unattended login.
@@ -127,24 +115,68 @@ What you can do:
 3. **Ask Kleinanzeigen.** Use their help article on restricted IPs and the support form,
    and ask whether there is an approved interface for managing listings automatically.
 
-## Logging in on a runner without a screen
+## One-time manual login (required)
 
-`scripts/login-remote.sh` starts a virtual screen on the runner that you watch and
-control over VNC, and runs `login.sh` on it. You type your credentials and solve any
-CAPTCHA or SMS check yourself.
+**Why it is needed.** The first login to Kleinanzeigen has to be done by a person. In
+practice an unattended login from the runner was answered with "IP-Bereich vorübergehend
+gesperrt", and a login can also demand a CAPTCHA, an SMS code or an e-mail verification
+that only you can complete. Once you have logged in by hand in the bot's browser profile
+(`~/.klein-lister/browser-profile` of the runner user), every later run reuses that saved
+session and doesn't log in again. Skip this and the first run fails at login, and
+further logins then pause for 6 hours (see [If the login is blocked](#if-the-login-is-blocked)).
 
-```bash
-sudo apt install xvfb x11vnc
-export KLEINANZEIGEN_BOT_USERNAME='you@example.com'   # only used to check it is the same account
-export KLEINANZEIGEN_BOT_PASSWORD='unused'
-bash klein-lister/scripts/login-remote.sh <your-data-repo-folder>
-```
+**When to repeat it.** When the session has expired or was removed (the run log shows
+`Logging in...` followed by a failure, or the cooldown warning), after deleting the
+profile directory, or when you move the runner to another machine or user.
 
-It prints a one-time VNC password. VNC listens on `localhost` only, so connect through
-an SSH tunnel (`ssh -L 5900:localhost:5900 <runner>`, then a VNC viewer on
-`localhost:5900`), or set `KLEIN_LISTER_VNC_LISTEN` to a private address such as the
-runner's [Tailscale](https://tailscale.com) IP if you can't SSH into it directly.
-When you're logged in, press ENTER in the terminal.
+**Steps** (runner without a screen, reached over SSH; the runner service user is called
+`ci` below):
+
+1. **Prepare the runner** (once):
+   ```bash
+   sudo apt install xvfb x11vnc
+   git clone https://github.com/killsometimebe4timekillsu/klein-lister ~/klein-lister
+   ```
+   The script also needs the folder of your data repo (the one with `config.yaml`). If the
+   runner has already run the workflow, reuse its checkout:
+   `/home/ci/actions-runner/_work/<data-repo>/<data-repo>/data`. Otherwise clone your data
+   repo and use that.
+2. **Make sure no workflow run is active** on the runner: Chromium can't share a profile
+   between two processes.
+3. **Open an SSH session with a tunnel for the screen** from your computer. The login
+   command waits for ENTER, so it needs this interactive terminal:
+   ```bash
+   ssh -L 5900:localhost:5900 ci@<runner>
+   # via a jump host, e.g. a Proxmox node:
+   ssh -J <you>@<jump-host> -L 5900:localhost:5900 ci@<runner>
+   ```
+4. **In that session, start the virtual screen and the login:**
+   ```bash
+   export KLEINANZEIGEN_BOT_USERNAME='you@example.com'   # must be the account you log into
+   export KLEINANZEIGEN_BOT_PASSWORD='unused'            # placeholder: you type the real password yourself
+   bash ~/klein-lister/scripts/login-remote.sh <data-repo-folder>
+   ```
+   It prints a one-time VNC password.
+5. **Connect a VNC viewer to `localhost:5900`** on your computer (macOS: Finder → Go →
+   Connect to Server → `vnc://localhost:5900`; Windows/Linux: TigerVNC or Remmina) and
+   enter that password. You see the bot's Chromium.
+6. **Log in to Kleinanzeigen in that window** with your own credentials and complete any
+   CAPTCHA, SMS or e-mail check. Wait until you see your logged-in pages (for example
+   "Meine Anzeigen").
+7. **Press ENTER in the SSH session.** The bot checks that it is the configured account,
+   closes the browser to save the session, and clears the login-block cooldown.
+8. **Run the workflow**: Actions → Sync listings → Run workflow → `import` the first
+   time, `sync` afterwards. The log should show no `Logging in...` step, because the saved
+   session is used.
+
+If you are logging in at the runner itself (it has a screen), skip steps 1 to 5 and run
+`bash ~/klein-lister/scripts/login.sh <data-repo-folder>` instead. If you can't reach the
+runner over SSH but can over [Tailscale](https://tailscale.com), set
+`KLEIN_LISTER_VNC_LISTEN` to the runner's Tailscale IP and connect the viewer to that
+address instead of `localhost`.
+
+If your own login in that browser is blocked as well, the network range is the problem,
+not the unattended login: see [If the login is blocked](#if-the-login-is-blocked).
 
 ## Versions
 
