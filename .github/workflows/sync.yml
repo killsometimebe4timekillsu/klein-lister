@@ -55,13 +55,13 @@ jobs:
           fi
 
       - name: Check out data repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: data
           fetch-depth: 0
 
       - name: Check out klein-lister
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ inputs.tool-repository }}
           ref: ${{ inputs.tool-ref }}
