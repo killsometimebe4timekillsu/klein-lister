@@ -152,11 +152,12 @@ profile directory, or when you move the runner to another machine or user.
    ```
 4. **In that session, start the virtual screen and the login:**
    ```bash
-   export KLEINANZEIGEN_BOT_USERNAME='you@example.com'   # must be the account you log into
-   export KLEINANZEIGEN_BOT_PASSWORD='unused'            # placeholder: you type the real password yourself
+   git -C ~/klein-lister pull            # if you cloned it earlier
    bash ~/klein-lister/scripts/login-remote.sh <data-repo-folder>
    ```
-   It prints a one-time VNC password.
+   It asks for your Kleinanzeigen e-mail address (it must be the account you log into) and
+   prints a one-time VNC password. You type the real password into the browser yourself, so
+   it is never stored on the runner or in its shell history. Don't `export` it there.
 5. **Connect a VNC viewer to `localhost:5900`** on your computer (macOS: Finder → Go →
    Connect to Server → `vnc://localhost:5900`; Windows/Linux: TigerVNC or Remmina) and
    enter that password. You see the bot's Chromium.
@@ -190,5 +191,6 @@ The data repo calls the workflow at a tag (`@v1`) and passes the same tag as
 scripts/sync.py              decides what to delete / publish / update / import
 scripts/install-bot.sh       downloads the bot binary (KLEINANZEIGEN_BOT_VERSION, default latest)
 scripts/login.sh             one-time interactive login on the runner
+scripts/login-remote.sh      the same over a virtual screen + VNC, for a runner without a monitor
 examples/                    config.yaml, caller-workflow.yml and a sample listing
 ```

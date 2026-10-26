@@ -8,8 +8,7 @@ tool_dir="$(cd "$(dirname "$0")/.." && pwd)"
 data_dir="$(cd "${1:-.}" && pwd)"
 [[ -f "${data_dir}/config.yaml" ]] || { echo "no config.yaml in ${data_dir}" >&2; exit 1; }
 
-: "${KLEINANZEIGEN_BOT_USERNAME:?export KLEINANZEIGEN_BOT_USERNAME first}"
-: "${KLEINANZEIGEN_BOT_PASSWORD:?export KLEINANZEIGEN_BOT_PASSWORD first}"
+source "${tool_dir}/scripts/login-env.sh"
 
 bash "${tool_dir}/scripts/install-bot.sh"
 KLEIN_LISTER_DATA_DIR="${data_dir}" python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import sync; sync.render_config()' "${tool_dir}/scripts"

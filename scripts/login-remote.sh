@@ -15,6 +15,8 @@ tool_dir="$(cd "$(dirname "$0")/.." && pwd)"
 listen="${KLEIN_LISTER_VNC_LISTEN:-localhost}"
 port="${KLEIN_LISTER_VNC_PORT:-5900}"
 
+source "${tool_dir}/scripts/login-env.sh"  # asks for the account name before the screen starts
+
 for cmd in Xvfb x11vnc; do
   command -v "$cmd" >/dev/null || { echo "$cmd not found: sudo apt install xvfb x11vnc" >&2; exit 1; }
 done
