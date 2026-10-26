@@ -1,55 +1,74 @@
+# Reusable workflow: call it from your private data repo, see examples/caller-workflow.yml.
 name: Sync listings
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "listings/**"
-      - "config.yaml"
-  schedule:
-    # Daily: extend listings that expire within 8 days.
-    - cron: "17 7 * * *"
-  workflow_dispatch:
+  workflow_call:
     inputs:
       mode:
-        description: "sync = full sync by content hash, extend = extend expiring listings, import = download existing listings into the repo"
-        type: choice
-        options: [sync, extend, import]
+        description: "sync, extend or import"
+        type: string
         default: sync
-
-# Never run two browser sessions against the same account at once.
-concurrency:
-  group: kleinanzeigen
-  cancel-in-progress: false
+      before:
+        description: "commit to diff against (the push event's 'before')"
+        type: string
+        default: ""
+      tool-ref:
+        description: "ref of klein-lister to run; keep it equal to the @ref you call this workflow with"
+        type: string
+        default: v1
+      tool-repository:
+        type: string
+        default: killsometimebe4timekillsu/klein-lister
+      runs-on:
+        description: "runner labels as JSON"
+        type: string
+        default: '["self-hosted", "kleinanzeigen"]'
+    secrets:
+      KLEINANZEIGEN_USERNAME:
+        required: true
+      KLEINANZEIGEN_PASSWORD:
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   sync:
-    # Self-hosted runner on a machine with a residential IP and Chromium installed.
-    # Kleinanzeigen tends to challenge logins from GitHub-hosted (datacenter) IPs.
-    runs-on: [self-hosted, kleinanzeigen]
+    # Kleinanzeigen tends to challenge logins from GitHub-hosted (datacenter) IPs,
+    # so this expects a self-hosted runner with a residential IP and Chromium.
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out data repo
+        uses: actions/checkout@v4
         with:
+          path: data
           fetch-depth: 0
 
+      - name: Check out klein-lister
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tool-repository }}
+          ref: ${{ inputs.tool-ref }}
+          path: tool
+
       - name: Install kleinanzeigen-bot
-        run: bash scripts/install-bot.sh
+        run: bash tool/scripts/install-bot.sh
 
       - name: Sync
+        working-directory: data
         env:
           KLEINANZEIGEN_BOT_USERNAME: ${{ secrets.KLEINANZEIGEN_USERNAME }}
           KLEINANZEIGEN_BOT_PASSWORD: ${{ secrets.KLEINANZEIGEN_PASSWORD }}
-        run: |
-          mode="${{ github.event_name == 'schedule' && 'extend' || inputs.mode || 'sync' }}"
-          before="${{ github.event_name == 'push' && github.event.before || '' }}"
-          python3 scripts/sync.py --mode "$mode" --before "$before"
+          MODE: ${{ inputs.mode }}
+          BEFORE: ${{ inputs.before }}
+        run: python3 ../tool/scripts/sync.py --mode "$MODE" --before "$BEFORE"
 
       - name: Commit listing ids back
         if: always()
+        working-directory: data
+        env:
+          MODE: ${{ inputs.mode }}
         run: |
           git add listings imported-inactive 2>/dev/null || git add listings
           if git diff --cached --quiet; then
@@ -57,6 +76,6 @@ jobs:
             exit 0
           fi
           git -c user.name="klein-lister[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -m "chore: update listing state (${{ inputs.mode || 'sync' }}) [skip ci]"
+            commit -m "chore: update listing state (${MODE}) [skip ci]"
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"

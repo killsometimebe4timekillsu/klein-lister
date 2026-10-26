@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Second-Hand-Friends/kleinanzeigen-bot/main/schemas/config.schema.json
-# Main kleinanzeigen-bot configuration. scripts/sync.py renders this into
-# .runtime/config.yaml on the runner and fills in the browser profile path.
+# Main kleinanzeigen-bot configuration: copy to the root of your data repo.
+# scripts/sync.py renders it into .runtime/config.yaml with the browser profile path.
 ad_files:
   - ./listings/**/ad.yaml
 
