@@ -33,6 +33,9 @@ jobs:
       mode: ${{ github.event_name == 'schedule' && 'extend' || inputs.mode || 'sync' }}
       before: ${{ github.event_name == 'push' && github.event.before || '' }}
       tool-ref: v1
+      # Using your own fork? Change `uses:` above to your fork and add the line below
+      # (see "Using your own fork" in the README):
+      # tool-repository: <you>/klein-lister
     secrets:
       KLEINANZEIGEN_USERNAME: ${{ secrets.KLEINANZEIGEN_USERNAME }}
       KLEINANZEIGEN_PASSWORD: ${{ secrets.KLEINANZEIGEN_PASSWORD }}
