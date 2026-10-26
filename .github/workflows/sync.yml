@@ -39,6 +39,21 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 60
     steps:
+      # Without git, actions/checkout silently falls back to a tarball and the
+      # diff and commit-back steps break, so fail early with a clear message.
+      - name: Check runner prerequisites
+        run: |
+          missing=()
+          for tool in git python3 curl; do
+            command -v "$tool" >/dev/null || missing+=("$tool")
+          done
+          command -v chromium || command -v chromium-browser || command -v google-chrome || command -v microsoft-edge \
+            || missing+=("chromium or google-chrome")
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing on the runner (install, then restart the runner service): ${missing[*]}"
+            exit 1
+          fi
+
       - name: Check out data repo
         uses: actions/checkout@v4
         with:
