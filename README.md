@@ -23,6 +23,7 @@ which drives a real Chromium browser (Kleinanzeigen has no public API).
 | Set `active: false` (sold) | Deletes the listing and removes the `id` from `ad.yaml` |
 | Delete the folder | Deletes the listing |
 | Nothing (daily schedule) | Extends listings that expire within 8 days |
+| Run the workflow with `import` | Downloads your existing listings (text, photos, id) into `listings/` |
 
 Start from [`examples/gaming-laptop/ad.yaml`](examples/gaming-laptop/ad.yaml).
 All fields are documented in the
@@ -57,11 +58,23 @@ Don't edit the `id`, `content_hash`, `created_on` or `updated_on` fields; the bo
    `~/.klein-lister/browser-profile` and reused by the workflow.
    Run it again whenever a sync fails at login.
 
+## Importing existing listings
+
+Already have listings online? After the setup below, run *Actions → Sync listings →
+Run workflow* with `import`. Every listing that is online but not yet in the repo
+is downloaded to `listings/<title>_<id>/ad.yaml` with its photos and committed.
+From then on the normal sync manages it. Running `import` again only fetches
+listings that are missing from the repo.
+
+Listings that aren't active online (paused, reserved or expired) land in
+`imported-inactive/` instead, so a sync never mistakes them for sold items and
+deletes them. Move a folder into `listings/` (with `active: true`) to manage it.
+
 ## Running manually
 
 *Actions → Sync listings → Run workflow* with `sync` compares every listing by
 content hash (note: a swapped photo with the same file name is only detected on
-push), or `extend` to extend expiring listings.
+push), `extend` to extend expiring listings, or `import` (see above).
 
 Locally, `python3 scripts/sync.py --dry-run --before <sha>` prints the bot
 commands a push since `<sha>` would run.
@@ -72,6 +85,7 @@ commands a push since `<sha>` would run.
 config.yaml               bot config (defaults for all listings)
 listings/<item>/ad.yaml   one folder per listing, photos next to it
 examples/                 templates, not synced
+imported-inactive/        imported listings that weren't active online, not synced
 scripts/sync.py           decides what to delete / publish / update
 scripts/install-bot.sh    downloads the bot binary (KLEINANZEIGEN_BOT_VERSION, default latest)
 scripts/login.sh          one-time interactive login on the runner

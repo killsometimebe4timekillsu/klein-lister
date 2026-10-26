@@ -10,7 +10,12 @@ Order of operations:
 The bot writes ids and hashes back into the ad.yaml files; the workflow
 commits those changes afterwards.
 
-Usage: sync.py [--before SHA] [--mode sync|extend] [--dry-run]
+`--mode import` instead downloads the listings that are online but not yet in
+the repo into listings/<folder>/ad.yaml. Listings that are not currently active
+online (paused, reserved, expired) go to imported-inactive/ so a sync never
+treats them as sold.
+
+Usage: sync.py [--before SHA] [--mode sync|extend|import] [--dry-run]
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 LISTINGS = ROOT / "listings"
 RUNTIME_DIR = ROOT / ".runtime"
 RUNTIME_CONFIG = RUNTIME_DIR / "config.yaml"
+INACTIVE_IMPORTS = ROOT / "imported-inactive"
 AD_FILE = "ad.yaml"
 NULL_SHA = "0" * 40
 
@@ -53,8 +60,8 @@ def render_config() -> None:
     RUNTIME_DIR.mkdir(exist_ok=True)
     text = (ROOT / "config.yaml").read_text(encoding="utf-8")
     text = text.replace("__PROFILE_DIR__", profile)
-    # ad_files are relative to the config file, which now lives one level deeper.
-    text = text.replace("  - ./listings/", "  - ../listings/")
+    # Paths are relative to the config file, which now lives one level deeper.
+    text = text.replace("./listings", "../listings")
     RUNTIME_CONFIG.write_text(text, encoding="utf-8")
 
 
@@ -78,6 +85,30 @@ def changed_ad_dirs(before: str) -> tuple[set[Path], list[str]]:
     return touched, removed_ids
 
 
+def normalize_imports(dry_run: bool) -> None:
+    """Rename downloaded ad_<id>.yaml files to ad.yaml and park inactive ones."""
+    for folder in sorted(p for p in LISTINGS.iterdir() if p.is_dir()):
+        if (folder / AD_FILE).exists():
+            continue
+        candidates = sorted(folder.glob("ad_*.yaml"))
+        if len(candidates) != 1:
+            continue
+        text = candidates[0].read_text(encoding="utf-8")
+        if is_inactive(text):
+            target = INACTIVE_IMPORTS / folder.name
+            print(f"imported inactive listing {ad_id(text)} -> {target.relative_to(ROOT)}")
+            if not dry_run:
+                INACTIVE_IMPORTS.mkdir(exist_ok=True)
+                if target.exists():  # re-import refreshes the parked copy
+                    shutil.rmtree(target)
+                folder.rename(target)
+                (target / candidates[0].name).rename(target / AD_FILE)
+            continue
+        print(f"imported listing {ad_id(text)} -> {folder.relative_to(ROOT)}/{AD_FILE}")
+        if not dry_run:
+            candidates[0].rename(folder / AD_FILE)
+
+
 def run_bot(*args: str, dry_run: bool) -> bool:
     cmd = [os.environ.get("KLEINANZEIGEN_BOT", "kleinanzeigen-bot"), "--workspace-mode=portable",
            f"--config={RUNTIME_CONFIG}", *args]
@@ -90,7 +121,7 @@ def run_bot(*args: str, dry_run: bool) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--before", default="", help="commit to diff against (push event 'before')")
-    parser.add_argument("--mode", choices=["sync", "extend"], default="sync")
+    parser.add_argument("--mode", choices=["sync", "extend", "import"], default="sync")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -98,6 +129,11 @@ def main() -> int:
 
     if args.mode == "extend":
         return 0 if run_bot("extend", "--ads=all", dry_run=args.dry_run) else 1
+    if args.mode == "import":
+        LISTINGS.mkdir(exist_ok=True)
+        ok = run_bot("download", "--ads=new", dry_run=args.dry_run)
+        normalize_imports(dry_run=args.dry_run)
+        return 0 if ok else 1
 
     ads = {p.parent: p.read_text(encoding="utf-8") for p in sorted(LISTINGS.glob(f"*/{AD_FILE}"))}
 
