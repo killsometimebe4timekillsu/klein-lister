@@ -18,6 +18,12 @@ publishing:
   package_selection: BASIS
   delete_old_ads: AFTER_PUBLISH
 
+download:
+  # `import` mode writes existing online listings here; sync.py renames the
+  # downloaded ad_<id>.yaml to ad.yaml afterwards.
+  dir: ./listings
+  folder_name_template: "{title}_{id}"
+
 deleting:
   # After a listing is deleted, drop its id so it is never deleted twice.
   after_delete: RESET
