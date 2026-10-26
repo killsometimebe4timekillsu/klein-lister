@@ -18,6 +18,12 @@ clears it; KLEIN_LISTER_IGNORE_LOGIN_BLOCK=1 skips the check.
 
 KLEIN_LISTER_VERBOSE=1 runs the bot with -v (debug log) to troubleshoot a failed run.
 
+After clicking "submit" the bot sometimes can't read Kleinanzeigen's confirmation page
+(a browser protocol error while the page navigates) and reports "Manual recovery required",
+although the edit was applied. The bot never retries then, because a repeated *publish*
+could create a duplicate listing. An *update* edits the same listing by id, so sync.py
+repeats it (KLEIN_LISTER_UPDATE_RETRIES, default 2) for exactly those listings.
+
 `--mode import` instead downloads the listings that are online but not yet in
 the repo into listings/<folder>/ad.yaml. Listings that are not currently active
 online (paused, reserved, expired) go to imported-inactive/ so a sync never
@@ -51,15 +57,30 @@ BLOCK_MARKER = STATE_DIR / "login-blocked"
 BLOCK_COOLDOWN = float(os.environ.get("KLEIN_LISTER_BLOCK_COOLDOWN_HOURS", "6")) * 3600
 BLOCK_SIGNAL = "IP_RANGE_BLOCKED"  # label the bot logs when it sees the block page
 VERBOSE = os.environ.get("KLEIN_LISTER_VERBOSE", "").lower() not in ("", "0", "false", "no")
+UPDATE_RETRIES = int(os.environ.get("KLEIN_LISTER_UPDATE_RETRIES", "2"))
 NULL_SHA = "0" * 40
 
 ID_RE = re.compile(r"^id:\s*['\"]?(\d+)", re.MULTILINE)
+TITLE_RE = re.compile(r"^title:[ \t]*(.*?)[ \t]*$", re.MULTILINE)
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+UNCONFIRMED_RE = re.compile(r"Manual recovery required for \[(.*)\]\. Check")
+FAILED_RE = re.compile(r"DONE: .*\((\d+) failed\)")
 INACTIVE_RE = re.compile(r"^active:\s*(false|no|off)\s*$", re.MULTILINE | re.IGNORECASE)
 
 
 def ad_id(text: str) -> str | None:
     m = ID_RE.search(text)
     return m.group(1) if m else None
+
+
+def ad_title(text: str) -> str | None:
+    m = TITLE_RE.search(text)
+    if not m:
+        return None
+    title = m.group(1)
+    if len(title) >= 2 and title[0] == title[-1] and title[0] in "'\"":
+        title = title[1:-1]
+    return title
 
 
 def is_inactive(text: str) -> bool:
@@ -156,7 +177,15 @@ def login_block_age() -> float | None:
         return None
 
 
-def run_bot(*args: str, dry_run: bool) -> bool:
+class BotReport:
+    """What a bot run said about its own failures."""
+
+    def __init__(self) -> None:
+        self.failed = 0  # "DONE: ... (N failed)"
+        self.unconfirmed: list[str] = []  # titles with "Manual recovery required"
+
+
+def run_bot(*args: str, dry_run: bool, report: BotReport | None = None) -> bool:
     cmd = [os.environ.get("KLEINANZEIGEN_BOT", "kleinanzeigen-bot"), *(["-v"] if VERBOSE else []),
            "--workspace-mode=portable", f"--config={RUNTIME_CONFIG}", *args]
     print("+", " ".join(cmd), flush=True)
@@ -169,6 +198,12 @@ def run_bot(*args: str, dry_run: bool) -> bool:
         for line in proc.stdout:
             print(line, end="", flush=True)
             blocked = blocked or BLOCK_SIGNAL in line
+            if report is not None:
+                clean = ANSI_RE.sub("", line)
+                if m := UNCONFIRMED_RE.search(clean):
+                    report.unconfirmed.append(m.group(1))
+                elif m := FAILED_RE.search(clean):
+                    report.failed = int(m.group(1))
     if blocked:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         BLOCK_MARKER.touch()
@@ -176,6 +211,27 @@ def run_bot(*args: str, dry_run: bool) -> bool:
     if proc.returncode == 0:
         BLOCK_MARKER.unlink(missing_ok=True)
     return proc.returncode == 0
+
+
+def run_update(selector: str, ads: dict[Path, str], dry_run: bool) -> bool:
+    """`update --ads=<selector>`, repeated for listings whose submit the bot couldn't confirm."""
+    report = BotReport()
+    ok = run_bot("update", f"--ads={selector}", dry_run=dry_run, report=report)
+    # Anything that failed for another reason keeps the run red; only unconfirmed submits are retried.
+    other_failures = report.failed != len(report.unconfirmed)
+    for attempt in range(1, UPDATE_RETRIES + 1):
+        if ok or not report.unconfirmed:
+            break
+        titles = set(report.unconfirmed)
+        ids = sorted({i for text in ads.values() if ad_title(text) in titles and (i := ad_id(text))})
+        if not ids:
+            break
+        print(f"::warning::The bot sent the update of {len(titles)} listing(s) but couldn't confirm it "
+              f"({', '.join(sorted(titles))}). Repeating it: attempt {attempt}/{UPDATE_RETRIES}.", flush=True)
+        report = BotReport()
+        ok = run_bot("update", f"--ads={','.join(ids)}", dry_run=dry_run, report=report)
+        other_failures = other_failures or report.failed != len(report.unconfirmed)
+    return ok and not other_failures
 
 
 def main() -> int:
@@ -238,9 +294,9 @@ def run() -> int:
     if has_new:
         ok &= run_bot("publish", "--ads=new", dry_run=args.dry_run)
     if to_update is None:
-        ok &= run_bot("update", "--ads=changed", dry_run=args.dry_run)
+        ok &= run_update("changed", ads, args.dry_run)
     elif to_update:
-        ok &= run_bot("update", f"--ads={','.join(to_update)}", dry_run=args.dry_run)
+        ok &= run_update(",".join(to_update), ads, args.dry_run)
 
     if not (to_delete or has_new or to_update or to_update is None):
         print("Nothing to sync.")
