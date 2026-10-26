@@ -1,5 +1,8 @@
 # klein-lister
 
+> 🤖 **AI-generated:** this repository (code, workflow and docs) was created with
+> [Claude Code](https://claude.com/claude-code). Review changes before relying on them.
+
 Manage your [kleinanzeigen.de](https://www.kleinanzeigen.de) listings from this repo.
 Each listing is a folder with an `ad.yaml` and its photos. Push to `main` and a
 GitHub Actions workflow creates, updates or deletes the listings to match.
