@@ -22,7 +22,8 @@ This repo is the **tool**: scripts plus a
 Your listings live in **your own private data repo**, which contains your
 `config.yaml`, a `listings/` folder, your login secrets and a short workflow
 that calls this one. Your self-hosted runner is attached only to that private
-repo, so nobody else can run code on it.
+repo, so nobody else can run code on it. To run your own copy of the tool, see
+[Using your own fork](#using-your-own-fork-two-repositories).
 
 ```
 your-data-repo/
@@ -67,6 +68,45 @@ Don't edit the `id`, `content_hash`, `created_on` or `updated_on` fields; the bo
 4. **Do the [one-time manual login](#one-time-manual-login-required).** This step is
    required: until a person has logged in once in the runner's browser profile, the
    workflow's first login will most likely fail.
+
+## Using your own fork (two repositories)
+
+To use this for your own account, set up two repositories, as this project does:
+
+| Repo | Visibility | Holds |
+| --- | --- | --- |
+| Your **fork** of klein-lister | public (a fork of a public repo stays public) | the scripts and the reusable workflow, no personal data |
+| Your **data repo** (a new, empty repo, not a fork) | **private** | `config.yaml`, `listings/`, the secrets, the caller workflow and the self-hosted runner |
+
+Why two: your listings carry your name, address, phone number and photos, and the runner
+holds your logged-in session, so all of that must stay private. The tool itself is generic
+code. Why a fork rather than the original: the workflow runs on your runner with access to
+your Kleinanzeigen login, so a repo you control (or a commit you reviewed) decides what code
+gets there, and changes in the original reach you only when you pull them in.
+
+1. **Fork** this repo on GitHub. Create the ref you will pin to, for example
+   `git tag v1 && git push origin v1`, or use a full commit SHA that you reviewed.
+2. **Create the data repo as private** and follow [Setup](#setup) above.
+3. **Point the caller workflow at your fork.** In the data repo's `.github/workflows/sync.yml`,
+   change the tool in three places:
+   ```yaml
+   jobs:
+     sync:
+       uses: <you>/klein-lister/.github/workflows/sync.yml@v1
+       with:
+         tool-repository: <you>/klein-lister
+         tool-ref: v1
+   ```
+   `uses:` selects the workflow file, while `tool-repository` and `tool-ref` select the scripts
+   it runs. They must name the same repo and the same ref, or the workflow of one version runs
+   the scripts of another (the defaults point to the original repo).
+4. **If your fork is private,** allow the data repo to use its workflows: fork → *Settings →
+   Actions → General → Access*.
+5. **To update,** use *Sync fork* on GitHub, review the changes and move your ref (or bump the
+   SHA) when you are happy.
+
+Never attach the self-hosted runner to a public repo: pull requests from strangers could run
+code on it. Keep listings out of the fork, since it is public.
 
 ## Importing existing listings
 
@@ -122,6 +162,11 @@ repository variable `KLEIN_LISTER_VERBOSE` with the value `1` in the data repo
 (*Settings → Secrets and variables → Actions → Variables*). The bot then runs with
 `-v` and logs its debug output; remove the variable again afterwards. The same log is
 written to `.runtime/kleinanzeigen-bot-latest.log` in the data repo checkout on the runner.
+
+An imported listing can come with `shipping_type: NOT_APPLICABLE`. On update Kleinanzeigen may
+then reject the form with `Bitte wähle mindestens eine Versandoption aus`. Nothing is changed
+online in that case. Set `shipping_type: PICKUP`, or `SHIPPING` together with `shipping_options`,
+in that listing's `ad.yaml`.
 
 If the log says `Manual recovery required` for a listing, the bot clicked "submit" but
 couldn't confirm the result and deliberately doesn't retry, so it never edits twice.
@@ -195,8 +240,10 @@ not the unattended login: see [If the login is blocked](#if-the-login-is-blocked
 
 ## Versions
 
-The data repo calls the workflow at a tag (`@v1`) and passes the same tag as
-`tool-ref`. Bump both together to pick up a new version.
+The data repo calls the workflow at a ref (`@v1`) and passes the same ref as `tool-ref`.
+Bump both together to pick up a new version. In the original repo `v1` is a branch that is
+moved to the latest reviewed `main`; in your own fork you can pin a tag or a commit SHA instead
+(see [Using your own fork](#using-your-own-fork-two-repositories)).
 
 ## Layout of this repo
 
