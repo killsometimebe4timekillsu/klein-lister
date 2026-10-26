@@ -16,6 +16,8 @@ period (6 hours, KLEIN_LISTER_BLOCK_COOLDOWN_HOURS), so a block is never
 prolonged by our own retries. A successful interactive login (scripts/login.sh)
 clears it; KLEIN_LISTER_IGNORE_LOGIN_BLOCK=1 skips the check.
 
+KLEIN_LISTER_VERBOSE=1 runs the bot with -v (debug log) to troubleshoot a failed run.
+
 `--mode import` instead downloads the listings that are online but not yet in
 the repo into listings/<folder>/ad.yaml. Listings that are not currently active
 online (paused, reserved, expired) go to imported-inactive/ so a sync never
@@ -48,6 +50,7 @@ STATE_DIR = Path(os.environ.get("KLEIN_LISTER_STATE_DIR") or Path.home() / ".kle
 BLOCK_MARKER = STATE_DIR / "login-blocked"
 BLOCK_COOLDOWN = float(os.environ.get("KLEIN_LISTER_BLOCK_COOLDOWN_HOURS", "6")) * 3600
 BLOCK_SIGNAL = "IP_RANGE_BLOCKED"  # label the bot logs when it sees the block page
+VERBOSE = os.environ.get("KLEIN_LISTER_VERBOSE", "").lower() not in ("", "0", "false", "no")
 NULL_SHA = "0" * 40
 
 ID_RE = re.compile(r"^id:\s*['\"]?(\d+)", re.MULTILINE)
@@ -154,8 +157,8 @@ def login_block_age() -> float | None:
 
 
 def run_bot(*args: str, dry_run: bool) -> bool:
-    cmd = [os.environ.get("KLEINANZEIGEN_BOT", "kleinanzeigen-bot"), "--workspace-mode=portable",
-           f"--config={RUNTIME_CONFIG}", *args]
+    cmd = [os.environ.get("KLEINANZEIGEN_BOT", "kleinanzeigen-bot"), *(["-v"] if VERBOSE else []),
+           "--workspace-mode=portable", f"--config={RUNTIME_CONFIG}", *args]
     print("+", " ".join(cmd), flush=True)
     if dry_run:
         return True

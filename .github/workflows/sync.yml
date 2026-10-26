@@ -77,6 +77,8 @@ jobs:
           KLEINANZEIGEN_BOT_PASSWORD: ${{ secrets.KLEINANZEIGEN_PASSWORD }}
           MODE: ${{ inputs.mode }}
           BEFORE: ${{ inputs.before }}
+          # Set the repository variable KLEIN_LISTER_VERBOSE=1 in the data repo to get the bot's debug log.
+          KLEIN_LISTER_VERBOSE: ${{ vars.KLEIN_LISTER_VERBOSE }}
         run: python3 ../tool/scripts/sync.py --mode "$MODE" --before "$BEFORE"
 
       - name: Commit listing ids back
