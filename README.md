@@ -133,6 +133,28 @@ push), `extend` to extend expiring listings, or `import` (see above).
 Locally, from the data repo, `python3 /path/to/klein-lister/scripts/sync.py --dry-run --before <sha>`
 prints the bot commands a push since `<sha>` would run.
 
+## Settings (all optional)
+
+Normal runs need none of these; each has a default. They are plain environment variables read
+by `scripts/sync.py`; none of them is defined in a file of this repo.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `KLEIN_LISTER_VERBOSE` | off | Runs the bot with `-v` (debug log) to troubleshoot a failed run. |
+| `KLEIN_LISTER_BLOCK_COOLDOWN_HOURS` | `6` | Hours without a login attempt after Kleinanzeigen blocked one. |
+| `KLEIN_LISTER_UPDATE_RETRIES` | `2` | How often an update the bot couldn't confirm is repeated. |
+| `KLEIN_LISTER_IGNORE_LOGIN_BLOCK` | off | Set to `1` to skip the cooldown check. |
+
+**Verbose:** the workflow passes this one on from a repository *variable*. In the data repo
+open *Settings → Secrets and variables → Actions → Variables*, add `KLEIN_LISTER_VERBOSE`
+with the value `1`, run again, and remove the variable when you're done (the log is long).
+
+**The others** are read from the environment of the runner, because the workflow doesn't
+pass them on. To change one, add a line such as `KLEIN_LISTER_BLOCK_COOLDOWN_HOURS=12` to the
+file `.env` in the runner's directory (for example `~/actions-runner/.env`, one `NAME=value`
+per line) and restart the runner service. Never put the Kleinanzeigen password there; it comes
+from the repository secrets. Without such a line the default applies.
+
 ## If the login is blocked
 
 Kleinanzeigen may answer a login with "IP-Bereich vorübergehend gesperrt" (the log
@@ -142,7 +164,7 @@ ordinary users, for example behind shared (CGNAT) addresses or VPNs, and usually
 lifts after some time. It doesn't mean your account is blocked.
 
 What the workflow does about it: the run stops at the first blocked login, and
-no further login is attempted for 6 hours (`KLEIN_LISTER_BLOCK_COOLDOWN_HOURS`), so
+no further login is attempted for 6 hours (the default, see [Settings](#settings-all-optional)), so
 our own retries can't prolong the block. Runs during the cooldown are skipped with a
 warning (a skipped daily `extend` stays green, a skipped `sync`/`import` is red so you
 notice). A successful interactive login clears the cooldown, as does deleting
@@ -161,11 +183,10 @@ What you can do:
 
 ## When a run fails
 
-The Actions log of the *Sync* step shows the bot's output. For more detail, add a
-repository variable `KLEIN_LISTER_VERBOSE` with the value `1` in the data repo
-(*Settings → Secrets and variables → Actions → Variables*). The bot then runs with
-`-v` and logs its debug output; remove the variable again afterwards. The same log is
-written to `.runtime/kleinanzeigen-bot-latest.log` in the data repo checkout on the runner.
+The Actions log of the *Sync* step shows the bot's output. For more detail, set the
+`KLEIN_LISTER_VERBOSE` variable (see [Settings](#settings-all-optional)); the bot then runs with
+`-v` and logs its debug output. The same log is written to
+`.runtime/kleinanzeigen-bot-latest.log` in the data repo checkout on the runner.
 
 An imported listing can come with `shipping_type: NOT_APPLICABLE`. On update Kleinanzeigen may
 then reject the form with `Bitte wähle mindestens eine Versandoption aus`. Nothing is changed
@@ -176,8 +197,8 @@ If the log says `Manual recovery required` for a listing, the bot clicked "submi
 couldn't confirm the result (typically a browser protocol error while Kleinanzeigen's
 confirmation page loads, although the page was the "edit successful" one), and it never
 retries by itself, because a repeated *publish* could create a duplicate listing. For an
-*update* the workflow repeats it for exactly those listings (twice at most,
-`KLEIN_LISTER_UPDATE_RETRIES`), since an update edits the same listing by id. The log then
+*update* the workflow repeats it for exactly those listings (twice at most, the
+`KLEIN_LISTER_UPDATE_RETRIES` setting), since an update edits the same listing by id. The log then
 shows a warning `Repeating it: attempt 1/2`, and the retry writes the new `content_hash` back.
 A `publish` is never repeated: look at *Meine Anzeigen* to see whether the listing exists.
 Note that a `sync` started by hand compares content hashes and also updates every listing
