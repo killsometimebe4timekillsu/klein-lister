@@ -120,6 +120,10 @@ Listings that aren't active online (paused, reserved or expired) land in
 `imported-inactive/` instead, so a sync never mistakes them for sold items and
 deletes them. Move a folder into `listings/` (with `active: true`) to manage it.
 
+The log of an `import` run starts with the bot's `list` output: id, title, state and expiry
+of everything your account has online. If a listing you expect isn't there, the bot can't
+import it either.
+
 ## Running manually
 
 *Actions → Sync listings → Run workflow* with `sync` compares every listing by

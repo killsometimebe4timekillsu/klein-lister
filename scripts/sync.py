@@ -27,7 +27,8 @@ repeats it (KLEIN_LISTER_UPDATE_RETRIES, default 2) for exactly those listings.
 `--mode import` instead downloads the listings that are online but not yet in
 the repo into listings/<folder>/ad.yaml. Listings that are not currently active
 online (paused, reserved, expired) go to imported-inactive/ so a sync never
-treats them as sold.
+treats them as sold. The run first prints the bot's `list` output (id, title,
+state, expiry of everything the account has online).
 
 Run it from the data repo (the one with config.yaml and listings/), or point
 KLEIN_LISTER_DATA_DIR at it.
@@ -265,6 +266,9 @@ def run() -> int:
         return 0 if run_bot("extend", "--ads=all", dry_run=args.dry_run) else 1
     if args.mode == "import":
         LISTINGS.mkdir(exist_ok=True)
+        # Print what the account has online (state, expiry): the log then shows what the
+        # download below has to work with. Informational, so its result is ignored.
+        run_bot("list", dry_run=args.dry_run)
         ok = run_bot("download", "--ads=new", dry_run=args.dry_run)
         normalize_imports(dry_run=args.dry_run)
         return 0 if ok else 1
