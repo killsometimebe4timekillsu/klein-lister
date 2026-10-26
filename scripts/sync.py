@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(os.environ.get("KLEIN_LISTER_DATA_DIR") or Path.cwd()).resolve()
@@ -56,10 +57,28 @@ def git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout
 
 
+def release_profile(profile: Path) -> None:
+    """Stop browsers left over from an aborted run and drop their profile locks.
+
+    Runs never overlap (the workflow uses a concurrency group), so any Chromium
+    still using this profile is a leftover that would block the next start.
+    """
+    pattern = f"--user-data-dir={profile}"
+    if subprocess.run(["pkill", "-u", str(os.getuid()), "-f", "--", pattern], check=False).returncode == 0:
+        print(f"stopped leftover browser using {profile}")
+        time.sleep(2)
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        lock = profile / name
+        if lock.is_symlink() or lock.exists():
+            print(f"removing stale browser lock {lock}")
+            lock.unlink()
+
+
 def render_config() -> None:
     """Write the runtime config with a browser profile that survives checkouts."""
     profile = os.environ.get("KLEIN_LISTER_PROFILE_DIR") or str(Path.home() / ".klein-lister" / "browser-profile")
     Path(profile).mkdir(parents=True, exist_ok=True)
+    release_profile(Path(profile))
     RUNTIME_DIR.mkdir(exist_ok=True)
     text = (ROOT / "config.yaml").read_text(encoding="utf-8")
     text = text.replace("__PROFILE_DIR__", profile)
