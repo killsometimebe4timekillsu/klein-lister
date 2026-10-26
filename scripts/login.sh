@@ -16,3 +16,5 @@ KLEIN_LISTER_DATA_DIR="${data_dir}" python3 -c 'import sys; sys.path.insert(0, s
 # The login command needs a visible browser: drop the headless flag for this run.
 sed -i.bak '/--headless/d' "${data_dir}/.runtime/config.yaml" && rm -f "${data_dir}/.runtime/config.yaml.bak"
 cd "${data_dir}/.runtime" && "${HOME}/.klein-lister/bin/kleinanzeigen-bot" --workspace-mode=portable --config=config.yaml login
+# A successful interactive login ends the cooldown that sync.py applies after a block.
+rm -f "${KLEIN_LISTER_STATE_DIR:-${HOME}/.klein-lister}/login-blocked"
