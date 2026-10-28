@@ -50,6 +50,17 @@ All fields are documented in the
 
 Don't edit the `id`, `content_hash`, `created_on` or `updated_on` fields; the bot maintains them.
 
+Kleinanzeigen decides what stays online, and it removes listings it considers duplicates. In
+our test, a listing was deleted (`active: false`) and published again an hour later with the
+same text and photos; Kleinanzeigen removed the new one within a day as a duplicate. So don't
+republish a deleted listing right away, and if a listing disappears, read the message
+Kleinanzeigen sent you before trying again. The daily `extend` run warns
+`not found in published ads` for a listing that has an `id` in the repo but is no longer online.
+To stop the repo from claiming it is online, set `active: false` and delete its `id`,
+`content_hash`, `created_on`, `updated_on` and `repost_count` lines (this is the one case where
+you edit those fields by hand); otherwise a sync would try to update or delete an id that no
+longer exists.
+
 ## Setup
 
 1. **Create a private data repo** and copy into it:
