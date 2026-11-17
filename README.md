@@ -73,7 +73,9 @@ longer exists.
 3. **Set up a self-hosted runner** for the data repo on a machine at home (Linux or
    macOS, always on, e.g. a Raspberry Pi 4/5 or a spare PC) with Chromium or Chrome,
    Python 3 and Git installed: *Settings → Actions → Runners → New self-hosted runner*,
-   and add the label `kleinanzeigen`. Kleinanzeigen tends to challenge logins from
+   and add the label `kleinanzeigen`. (An x86 machine without AVX2, for example one with an
+   Intel Celeron J4105, additionally needs Python 3.12 to 3.15 with `venv` and `pip`: see
+   [Older CPUs](#older-cpus-without-avx2).) Kleinanzeigen tends to challenge logins from
    GitHub's cloud IPs, while a home IP with a persistent browser profile usually
    stays logged in.
 4. **Do the [one-time manual login](#one-time-manual-login-required).** This step is
@@ -147,7 +149,7 @@ prints the bot commands a push since `<sha>` would run.
 ## Settings (all optional)
 
 Normal runs need none of these; each has a default. They are plain environment variables read
-by `scripts/sync.py`; none of them is defined in a file of this repo.
+by `scripts/sync.py` (and `scripts/install-bot.sh`); none of them is defined in a file of this repo.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -155,6 +157,7 @@ by `scripts/sync.py`; none of them is defined in a file of this repo.
 | `KLEIN_LISTER_BLOCK_COOLDOWN_HOURS` | `6` | Hours without a login attempt after Kleinanzeigen blocked one. |
 | `KLEIN_LISTER_UPDATE_RETRIES` | `2` | How often an update the bot couldn't confirm is repeated. |
 | `KLEIN_LISTER_IGNORE_LOGIN_BLOCK` | off | Set to `1` to skip the cooldown check. |
+| `KLEINANZEIGEN_BOT_FROM_SOURCE` | `auto` | `auto` installs the bot from its source only on a CPU without AVX2, `1` always does, `0` never does. Read by `scripts/install-bot.sh`. |
 
 **Verbose:** the workflow passes this one on from a repository *variable*. In the data repo
 open *Settings → Secrets and variables → Actions → Variables*, add `KLEIN_LISTER_VERBOSE`
@@ -165,6 +168,23 @@ pass them on. To change one, add a line such as `KLEIN_LISTER_BLOCK_COOLDOWN_HOU
 file `.env` in the runner's directory (for example `~/actions-runner/.env`, one `NAME=value`
 per line) and restart the runner service. Never put the Kleinanzeigen password there; it comes
 from the repository secrets. Without such a line the default applies.
+
+## Older CPUs without AVX2
+
+The prebuilt Linux binary of the bot (since the release built with GCC 15) contains AVX2
+instructions. On a CPU without them, for example the Intel Celeron J4105 of many mini PCs,
+it dies at start with `Illegal instruction` (exit code 132). `scripts/install-bot.sh` looks
+for `avx2` in `/proc/cpuinfo` and, if it is missing, installs the bot from its source instead:
+it clones the bot's `release` branch (`KLEINANZEIGEN_BOT_VERSION=preview` takes `main`; a tag or
+a commit id works too), installs the locked dependencies with [PDM](https://pdm-project.org)
+into `~/.klein-lister/source/<branch>/.venv` and puts a small launcher at
+`~/.klein-lister/bin/kleinanzeigen-bot`. The install is cached per commit, so a normal run only
+asks GitHub for the current commit id; it is redone when upstream publishes a new commit.
+
+The runner then needs, besides Git and Chromium: Python 3.12 to 3.15, the `venv` and `pip`
+modules (Debian/Ubuntu: `sudo apt install python3-venv python3-pip`) and access to
+github.com and pypi.org. Set `KLEINANZEIGEN_BOT_FROM_SOURCE=1` in the runner's `.env` (see
+[Settings](#settings-all-optional)) to force this mode on any machine, or `0` to never use it.
 
 ## If the login is blocked
 
@@ -197,7 +217,8 @@ What you can do:
 The Actions log of the *Sync* step shows the bot's output. For more detail, set the
 `KLEIN_LISTER_VERBOSE` variable (see [Settings](#settings-all-optional)); the bot then runs with
 `-v` and logs its debug output. The same log is written to
-`.runtime/kleinanzeigen-bot-latest.log` in the data repo checkout on the runner.
+`.runtime/kleinanzeigen-bot-latest.log` in the data repo checkout on the runner (when the bot
+runs from source, the file is called `kleinanzeigen_bot.log`).
 
 An imported listing can come with `shipping_type: NOT_APPLICABLE`. On update Kleinanzeigen may
 then reject the form with `Bitte wähle mindestens eine Versandoption aus`. Nothing is changed
@@ -291,7 +312,7 @@ moved to the latest reviewed `main`; in your own fork you can pin a tag or a com
 ```
 .github/workflows/sync.yml   reusable workflow (workflow_call)
 scripts/sync.py              decides what to delete / publish / update / import
-scripts/install-bot.sh       downloads the bot binary (KLEINANZEIGEN_BOT_VERSION, default latest)
+scripts/install-bot.sh       installs the bot: binary, or from source without AVX2 (KLEINANZEIGEN_BOT_VERSION, default latest)
 scripts/login.sh             one-time interactive login on the runner
 scripts/login-remote.sh      the same over a virtual screen + VNC, for a runner without a monitor
 examples/                    config.yaml, caller-workflow.yml and a sample listing
